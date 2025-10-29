@@ -95,11 +95,32 @@
         <div class="card">
           <h3>Itens cadastrados</h3>
           <div class="toolbar">
+            <select id="fDeposito"></select>
+            <select id="fEndereco"></select>
             <input id="buscaItem" placeholder="Buscar por código/descrição">
             <button id="btnReloadItens" class="btn btn-outline">Atualizar</button>
           </div>
-          <table id="tblItens"><thead><tr><th>Código</th><th>Descrição</th><th>UM</th><th>Estoque</th><th>Min</th><th>Custo</th><th>Ações</th></tr></thead><tbody></tbody></table>
+          <table id="tblItens"><thead><tr><th>Código</th><th>Descrição</th><th>UM base</th><th>Estoque</th><th>Min</th><th>Custo</th><th>Ações</th></tr></thead><tbody></tbody></table>
         </div>
+      </div>
+      <div class="card">
+        <h3>Conversão de unidades</h3>
+        <div class="grid">
+          <div>
+            <label>Item</label>
+            <select id="convItem"></select>
+          </div>
+          <div>
+            <label>Digite quantidade (ex.: 3 chapas)</label>
+            <input id="convEntrada" placeholder="Quantidade + unidade alternativa">
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button id="btnConverterUM" class="btn btn-outline" style="margin-top:2px">Converter</button>
+          </div>
+        </div>
+        <div id="convResultado" class="help"></div>
+        <div id="convTabela"></div>
       </div>
       <div class="card">
         <h3>Estrutura (BOM) de produto</h3>
@@ -146,6 +167,26 @@
             </div>
             <div class="grid">
               <div>
+                <label>Depósito</label>
+                <select id="mDeposito"></select>
+              </div>
+              <div>
+                <label>Endereço</label>
+                <select id="mEndereco"></select>
+              </div>
+            </div>
+            <div id="destinoTransfer" class="grid hidden">
+              <div>
+                <label>Depósito destino</label>
+                <select id="mDepositoDestino"></select>
+              </div>
+              <div>
+                <label>Endereço destino</label>
+                <select id="mEnderecoDestino"></select>
+              </div>
+            </div>
+            <div class="grid">
+              <div>
                 <label>Quantidade</label>
                 <input id="mQtd" type="number" step="0.0001" required value="1">
               </div>
@@ -164,6 +205,40 @@
                 <input id="mObs" placeholder="motivo/nota">
               </div>
             </div>
+            <div class="grid">
+              <div>
+                <label>Lote (opcional)</label>
+                <input id="mLote" placeholder="ex: L23-05">
+              </div>
+              <div>
+                <label>Validade</label>
+                <input id="mValidade" type="date">
+              </div>
+            </div>
+            <div class="grid">
+              <div class="checkbox">
+                <label><input type="checkbox" id="mFIFO"> Usar FIFO / PEPS</label>
+              </div>
+              <div>
+                <label>Causa da baixa</label>
+                <select id="mCausa">
+                  <option value="">-- selecionar --</option>
+                  <option value="CONSUMO">Consumo</option>
+                  <option value="PERDA">Perda</option>
+                  <option value="QUEBRA">Quebra</option>
+                  <option value="AMOSTRA">Amostra</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid">
+              <div class="checkbox">
+                <label><input type="checkbox" id="mReserva"> Registrar como reserva</label>
+              </div>
+              <div>
+                <label>Pedido / Referência</label>
+                <input id="mPedidoRef" placeholder="ex: PED-123">
+              </div>
+            </div>
             <br>
             <button class="btn btn-primary" type="submit">Registrar</button>
             <span id="movMsg" class="help"></span>
@@ -171,8 +246,16 @@
         </div>
         <div class="card">
           <h3>Últimas movimentações</h3>
-          <table id="tblMov"><thead><tr><th>Data</th><th>Tipo</th><th>Item</th><th>Qtd</th><th>Custo</th><th>CC</th><th>Obs</th></tr></thead><tbody></tbody></table>
+          <div class="toolbar">
+            <select id="fMovDeposito"></select>
+            <select id="fMovEndereco"></select>
+          </div>
+          <table id="tblMov"><thead><tr><th>Data</th><th>Tipo</th><th>Item</th><th>Qtd</th><th>Depósito</th><th>Endereço</th><th>Lote</th><th>Causa</th><th>Obs/Status</th></tr></thead><tbody></tbody></table>
         </div>
+      </div>
+      <div class="card">
+        <h3>Reservas pendentes</h3>
+        <table id="tblReservas"><thead><tr><th>Data</th><th>Item</th><th>Qtd</th><th>Depósito/Endereço</th><th>Pedido</th><th>Status</th></tr></thead><tbody></tbody></table>
       </div>
     </section>
 
@@ -220,6 +303,14 @@
             <input id="invQtd" type="number" step="0.0001" required>
           </div>
           <div>
+            <label>Depósito</label>
+            <select id="invDeposito"></select>
+          </div>
+          <div>
+            <label>Endereço</label>
+            <select id="invEndereco"></select>
+          </div>
+          <div>
             <button class="btn btn-outline" type="submit" style="margin-top:22px">Ajustar saldo</button>
           </div>
         </form>
@@ -254,10 +345,21 @@
         <pre class="small highlight">
 coleções principais:
 - usuarios/{uid}
+- depositos/{id}
+- enderecos/{id}
+  - depositoId, codigo, descricao
 - itens/{codigo}
-  - descricao, um, custoMedio, min, estoque (numérico)
+  - descricao, umBase, custoMedio, min, estoqueTotal, obs
+  - saldos/{enderecoId}
+    - qtd
+- lotes/{itemCodigo}/{loteId}
+  - validade, saldo, enderecoId
 - movimentos/{autoId}
-  - tipo, item, qtd, custo, cc, obs, criadoEm, uid
+  - tipo, item, qtd, custo, cc, obs, criadoEm, uid, depositoId, enderecoId, loteId
+- reservas/{id}
+  - item, qtd, enderecoId, pedidoRef, status
+- conversoesUM/{item}
+  - umBase, fatores[]
 - bom/{produto}/componentes/{item}
   - qtd
         </pre>
