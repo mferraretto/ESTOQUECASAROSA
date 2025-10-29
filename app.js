@@ -20,7 +20,16 @@ const state = {
   depositos: [],
   enderecos: [],
   enderecosMap: new Map(),
-  conversoes: new Map()
+  conversoes: new Map(),
+  ops: [],
+  opsMap: new Map()
+};
+
+const CAPACIDADE_MAQUINAS = {
+  'CNC-01': {manha: 480, tarde: 480, noite: 240},
+  'LIXA-01': {manha: 420, tarde: 420, noite: 240},
+  'PINT-01': {manha: 360, tarde: 360, noite: 240},
+  'MONT-01': {manha: 480, tarde: 480, noite: 300}
 };
 
 const selectsDeposito = ['fDeposito','mDeposito','mDepositoDestino','fMovDeposito','invDeposito'];
@@ -113,6 +122,7 @@ onAuthStateChanged(auth, async (user)=>{
   await listarItens();
   await listarMovs();
   await listarReservas();
+  await carregarOrdensProducao();
 });
 
 // ----------------- ITENS -----------------
@@ -367,8 +377,9 @@ $('frmBOM').addEventListener('submit', async (e)=>{
   const prod = $('bomProduto').value.trim().toUpperCase();
   const item = $('bomItem').value.trim().toUpperCase();
   const qtd = Number($('bomQtd').value);
+  const perdaPadraoPct = Number($('bomPerda').value||0);
   const ref = F.doc(db, 'bom', prod, 'componentes', item);
-  await F.setDoc(ref, { qtd }, {merge:true});
+  await F.setDoc(ref, { qtd, perdaPadraoPct }, {merge:true});
   $('bomMsg').textContent = 'Componente adicionado.';
   await listarBOMTabela(prod);
   e.target.reset();
@@ -381,8 +392,17 @@ async function listarBOMTabela(prod){
   const snap = await F.getDocs(q);
   snap.forEach(d=>{
     const c = d.data();
-    tbody.insertAdjacentHTML('beforeend', `<tr><td>${prod}</td><td>${d.id}</td><td>${c.qtd}</td>
-    <td><button class="btn btn-outline" data-rem="${d.id}" data-prod="${prod}">Remover</button></td></tr>`);
+    if(c.__deleted) return;
+    const perdaPct = Number(c.perdaPadraoPct||0).toFixed(2);
+    const linha = `
+      <tr>
+        <td>${prod}</td>
+        <td>${d.id}</td>
+        <td>${c.qtd}</td>
+        <td>${perdaPct}</td>
+        <td><button class="btn btn-outline" data-rem="${d.id}" data-prod="${prod}">Remover</button></td>
+      </tr>`;
+    tbody.insertAdjacentHTML('beforeend', linha);
   });
   tbody.querySelectorAll('[data-rem]').forEach(btn=>btn.addEventListener('click',()=>remBOM(btn.dataset.prod, btn.dataset.rem)));
 }
@@ -400,44 +420,88 @@ $('btnLoadBOM').addEventListener('click', async ()=>{
   const snap = await F.getDocs(q);
   snap.forEach(d=>{
     const c = d.data();
-    tbody.insertAdjacentHTML('beforeend', `<tr><td>${d.id}</td><td>${c.qtd}</td></tr>`);
+    if(c.__deleted) return;
+    const perdaPct = Number(c.perdaPadraoPct||0).toFixed(2);
+    tbody.insertAdjacentHTML('beforeend', `<tr><td>${d.id}</td><td>${c.qtd}</td><td>${perdaPct}</td></tr>`);
   });
 });
 
-// ----------------- PRODUÇÃO -----------------
-$('frmOP').addEventListener('submit', async (e)=>{
+$('frmSubproduto').addEventListener('submit', async (e)=>{
   e.preventDefault();
-  const prod = $('opProduto').value.trim().toUpperCase();
-  const qtd = Number($('opQtd').value||1);
+  const prod = $('subProduto').value.trim().toUpperCase();
+  const item = $('subItem').value.trim().toUpperCase();
+  const qtdPorUnid = Number($('subQtd').value||0);
+  if(!prod || !item){ $('subMsg').textContent = 'Informe produto e item.'; return; }
+  await F.addDoc(F.collection(db,'subprodutos',prod,'itens'), {
+    item, qtdPorUnid
+  });
+  $('subMsg').textContent = 'Subproduto cadastrado.';
+  await listarSubprodutosTabela(prod);
+  e.target.reset();
+});
+
+$('btnLoadSubprodutos').addEventListener('click', async ()=>{
+  const prod = $('subProdutoLookup').value.trim().toUpperCase();
+  await listarSubprodutosTabela(prod);
+});
+
+async function listarSubprodutosTabela(prod){
+  const tbody = $('tblSubprodutos').querySelector('tbody');
+  tbody.innerHTML='';
+  $('subMsg').textContent = '';
+  if(!prod){
+    $('subMsg').textContent = 'Informe o código do produto para listar.';
+    return;
+  }
+  const q = F.query(F.collection(db,'subprodutos',prod,'itens'));
+  const snap = await F.getDocs(q);
+  if(snap.size===0){
+    tbody.innerHTML = '<tr><td colspan="4">Nenhum subproduto cadastrado.</td></tr>';
+    return;
+  }
+  let inseriu = false;
+  snap.forEach(doc=>{
+    const data = doc.data();
+    if(data.__deleted) return;
+    const linha = `<tr><td>${prod}</td><td>${data.item}</td><td>${Number(data.qtdPorUnid||0).toFixed(3)}</td>`+
+      `<td><button class="btn btn-outline" data-sub="${doc.id}" data-prod="${prod}">Remover</button></td></tr>`;
+    tbody.insertAdjacentHTML('beforeend', linha);
+    inseriu = true;
+  });
+  if(!inseriu){
+    tbody.innerHTML = '<tr><td colspan="4">Nenhum subproduto cadastrado.</td></tr>';
+    return;
+  }
+  tbody.querySelectorAll('[data-sub]').forEach(btn=>btn.addEventListener('click',()=>removerSubproduto(btn.dataset.prod, btn.dataset.sub)));
+}
+
+async function removerSubproduto(prod, id){
+  await F.setDoc(F.doc(db,'subprodutos',prod,'itens',id), {__deleted:true}, {merge:true});
+  await listarSubprodutosTabela(prod);
+}
+
+// ----------------- PRODUÇÃO -----------------
+$('frmNovaOP').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const produto = $('opProduto').value.trim().toUpperCase();
+  const qtdPlanejada = Number($('opQtdPlanejada').value||0);
+  $('opMsg').textContent = '';
   try{
-    // Carrega BOM
-    const q = F.query(F.collection(db,'bom',prod,'componentes'));
-    const snap = await F.getDocs(q);
-    if(snap.size===0){ $('opMsg').textContent='Sem BOM cadastrada para '+prod; return; }
-
-    // Baixa componentes
-    for(const d of snap.docs){
-      const item = d.id;
-      const porUn = Number((d.data()||{}).qtd||0);
-      const total = porUn * qtd;
-      await registrarMovSimples('SAIDA', item, total, 0, 'PRODUCAO', 'Baixa OP '+prod);
-    }
-    // Entrada do produto final com custo médio somado dos componentes (simplificação: usa custo atual)
-    let custoTotal=0;
-    for(const d of snap.docs){
-      const item = d.id;
-      const porUn = Number((d.data()||{}).qtd||0);
-      const total = porUn * qtd;
-      const itSnap = await F.getDoc(F.doc(db,'itens',item));
-      const cm = itSnap.exists()? (itSnap.data().custoMedio||0) : 0;
-      custoTotal += cm * total;
-    }
-    const custoUnit = qtd>0 ? (custoTotal / qtd) : 0;
-    await registrarMovSimples('ENTRADA', prod, qtd, custoUnit, 'PRODUCAO', 'Entrada OP');
-
-    $('opMsg').textContent = 'Produção registrada.';
-    await listarItens();
-    await listarMovs();
+    if(!produto){ throw new Error('Informe o produto.'); }
+    if(!(qtdPlanejada>0)){ throw new Error('Quantidade inválida.'); }
+    const bom = await obterBOM(produto);
+    if(bom.length===0){ throw new Error('Sem BOM cadastrada para '+produto); }
+    const ref = await F.addDoc(F.collection(db,'op'), {
+      produto,
+      qtdPlanejada,
+      qtdProduzida: 0,
+      status: 'planejada',
+      inicio: F.serverTimestamp(),
+      fim: null
+    });
+    await recalcularCustosOP(ref.id);
+    $('opMsg').textContent = 'Ordem criada.';
+    await carregarOrdensProducao();
     e.target.reset();
   }catch(err){
     console.error(err);
@@ -445,17 +509,350 @@ $('frmOP').addEventListener('submit', async (e)=>{
   }
 });
 
-async function registrarMovSimples(tipo, item, qtd, custo, cc, obs){
-  const endereco = obterEnderecoPadrao();
-  await registrarMovimento({
-    tipo, item, qtd, custo, cc, obs,
-    enderecoId: endereco.id,
-    depositoId: endereco.depositoId,
-    usarFIFO: tipo==='SAIDA',
-    causa: tipo==='SAIDA'? 'CONSUMO':'PRODUCAO'
+$('frmParcialOP').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const opId = $('opParcialOP').value;
+  const qtd = Number($('opQtdParcial').value||0);
+  $('opParcialMsg').textContent = '';
+  try{
+    if(!opId){ throw new Error('Selecione a ordem.'); }
+    if(!(qtd>0)){ throw new Error('Quantidade inválida.'); }
+    await produzirParcial(opId, qtd);
+    $('opParcialMsg').textContent = 'Produção parcial registrada.';
+    e.target.reset();
+    if($('opParcialOP')) $('opParcialOP').value = opId;
+    await carregarOrdensProducao();
+  }catch(err){
+    console.error(err);
+    $('opParcialMsg').textContent = 'Erro: '+err.message;
+  }
+});
+
+$('frmEtapaOP').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const opId = $('opEtapaOP').value;
+  const nome = $('opEtapaNome').value||'outros';
+  const maquina = $('opEtapaMaquina').value;
+  const operador = $('opEtapaOperador').value.trim();
+  const inicioStr = $('opEtapaInicio').value;
+  const fimStr = $('opEtapaFim').value;
+  const perda = Number($('opEtapaPerda').value||0);
+  const observacao = $('opEtapaObs').value.trim();
+  $('opEtapaMsg').textContent = '';
+  try{
+    if(!opId) throw new Error('Selecione a ordem.');
+    if(!inicioStr || !fimStr) throw new Error('Informe início e fim.');
+    const inicio = new Date(inicioStr);
+    const fim = new Date(fimStr);
+    if(!(fim>inicio)) throw new Error('Fim deve ser após o início.');
+    const duracaoMin = (fim-inicio)/60000;
+    await validarCapacidadeMaquina(maquina, inicio, fim, duracaoMin);
+    await F.addDoc(F.collection(db,'op',opId,'etapas'), {
+      nome: (nome||'').toUpperCase(),
+      maquina,
+      operador,
+      inicio,
+      fim,
+      perda,
+      observacao
+    });
+    $('opEtapaMsg').textContent = 'Etapa registrada.';
+    await recalcularCustosOP(opId);
+    await listarEtapas(opId);
+    await carregarOrdensProducao();
+    e.target.reset();
+    if($('opEtapaOP')) $('opEtapaOP').value = opId;
+    if($('opEtapasFiltro')) $('opEtapasFiltro').value = opId;
+  }catch(err){
+    console.error(err);
+    $('opEtapaMsg').textContent = 'Erro: '+err.message;
+  }
+});
+
+if($('opEtapasFiltro')){
+  $('opEtapasFiltro').addEventListener('change', ()=>{
+    const opId = $('opEtapasFiltro').value;
+    if(opId) listarEtapas(opId);
   });
 }
 
+async function carregarOrdensProducao(){
+  let snap;
+  try{
+    const q = F.query(F.collection(db,'op'), F.orderBy('inicio','desc'));
+    snap = await F.getDocs(q);
+  }catch(err){
+    console.warn('Falha ao ordenar OP por início, usando ordenação padrão.', err);
+    snap = await F.getDocs(F.query(F.collection(db,'op')));
+  }
+  state.ops = [];
+  state.opsMap = new Map();
+  snap.forEach(doc=>{
+    const data = doc.data();
+    const registro = {id: doc.id, ...data};
+    state.ops.push(registro);
+    state.opsMap.set(doc.id, registro);
+  });
+  state.ops.sort((a,b)=>{
+    const ai = a.inicio && a.inicio.toDate ? a.inicio.toDate().getTime() : new Date(a.inicio||0).getTime();
+    const bi = b.inicio && b.inicio.toDate ? b.inicio.toDate().getTime() : new Date(b.inicio||0).getTime();
+    return (bi||0) - (ai||0);
+  });
+  atualizarOpSelects();
+  renderOrdensProducao();
+  const filtro = $('opEtapasFiltro');
+  if(filtro){
+    if(!filtro.value && state.ops.length){
+      filtro.value = state.ops[0].id;
+    }
+    if(filtro.value){
+      await listarEtapas(filtro.value);
+    } else {
+      const tbody = $('tblEtapasOP')?.querySelector('tbody');
+      if(tbody) tbody.innerHTML='';
+    }
+  }
+}
+
+function atualizarOpSelects(){
+  const selects = [$('opParcialOP'), $('opEtapaOP'), $('opEtapasFiltro')];
+  selects.forEach(sel=>{
+    if(!sel) return;
+    const current = sel.value;
+    sel.innerHTML = '<option value="">Selecione...</option>';
+    state.ops.forEach(op=>{
+      const label = `${op.id.slice(-6)} — ${op.produto}`;
+      const opt = document.createElement('option');
+      opt.value = op.id;
+      opt.textContent = label;
+      sel.appendChild(opt);
+    });
+    if(current && state.opsMap.has(current)) sel.value = current;
+  });
+}
+
+function renderOrdensProducao(){
+  const tbody = $('tblOP')?.querySelector('tbody');
+  if(!tbody) return;
+  tbody.innerHTML='';
+  if(state.ops.length===0){
+    tbody.innerHTML = '<tr><td colspan="10">Nenhuma ordem cadastrada.</td></tr>';
+    return;
+  }
+  state.ops.forEach(op=>{
+    const inicio = op.inicio && op.inicio.toDate ? op.inicio.toDate() : (op.inicio ? new Date(op.inicio) : null);
+    const fim = op.fim && op.fim.toDate ? op.fim.toDate() : (op.fim ? new Date(op.fim) : null);
+    const linha = `<tr>
+      <td>${op.id}</td>
+      <td>${op.produto||''}</td>
+      <td>${Number(op.qtdPlanejada||0).toFixed(3)}</td>
+      <td>${Number(op.qtdProduzida||0).toFixed(3)}</td>
+      <td>${(op.status||'').toUpperCase()}</td>
+      <td>${inicio?inicio.toLocaleString():''}</td>
+      <td>${fim?fim.toLocaleString():''}</td>
+      <td>${Number(op.perdaRealTotal||0).toFixed(3)}</td>
+      <td>R$ ${Number(op.custoPrevisto||0).toFixed(2)}</td>
+      <td>R$ ${Number(op.custoReal||0).toFixed(2)}</td>
+    </tr>`;
+    tbody.insertAdjacentHTML('beforeend', linha);
+  });
+}
+
+async function listarEtapas(opId){
+  const tbody = $('tblEtapasOP')?.querySelector('tbody');
+  if(!tbody) return;
+  tbody.innerHTML='';
+  if(!opId){ return; }
+  const q = F.query(F.collection(db,'op',opId,'etapas'), F.orderBy('inicio','desc'));
+  const snap = await F.getDocs(q);
+  if(snap.size===0){
+    tbody.innerHTML = '<tr><td colspan="7">Nenhuma etapa registrada.</td></tr>';
+    return;
+  }
+  snap.forEach(doc=>{
+    const etapa = doc.data();
+    const inicio = etapa.inicio && etapa.inicio.toDate ? etapa.inicio.toDate() : (etapa.inicio? new Date(etapa.inicio):null);
+    const fim = etapa.fim && etapa.fim.toDate ? etapa.fim.toDate() : (etapa.fim? new Date(etapa.fim):null);
+    const linha = `<tr><td>${inicio?inicio.toLocaleString():''}</td><td>${fim?fim.toLocaleString():''}</td><td>${(etapa.nome||'').toUpperCase()}</td><td>${etapa.operador||''}</td><td>${etapa.maquina||''}</td><td>${Number(etapa.perda||0).toFixed(3)}</td><td>${etapa.observacao||''}</td></tr>`;
+    tbody.insertAdjacentHTML('beforeend', linha);
+  });
+}
+
+async function produzirParcial(opId, qtd){
+  const opRef = F.doc(db,'op',opId);
+  const opSnap = await F.getDoc(opRef);
+  if(!opSnap.exists()) throw new Error('OP não encontrada.');
+  const op = opSnap.data();
+  const qtdPlanejada = Number(op.qtdPlanejada||0);
+  const qtdProduzida = Number(op.qtdProduzida||0);
+  const restante = qtdPlanejada - qtdProduzida;
+  if(qtd>restante+1e-6) throw new Error('Quantidade excede o planejado.');
+  const bom = await obterBOM(op.produto);
+  if(bom.length===0) throw new Error('BOM não encontrada para '+op.produto);
+  const endereco = obterEnderecoPadrao();
+  for(const comp of bom){
+    const fatorPerda = 1 + (Number(comp.perdaPadraoPct||0)/100);
+    const consumo = qtd * Number(comp.qtd||0) * fatorPerda;
+    if(consumo>0){
+      await registrarMovimento({
+        tipo:'SAIDA',
+        item: comp.item,
+        qtd: consumo,
+        custo: null,
+        cc:'PRODUCAO',
+        obs:`Consumo OP ${opId}`,
+        depositoId: endereco.depositoId,
+        enderecoId: endereco.id,
+        usarFIFO:true,
+        causa:'PRODUCAO'
+      });
+    }
+  }
+  const custoUnitario = Number(op.custoUnitarioReal || op.custoUnitarioPrevisto || 0);
+  await registrarMovimento({
+    tipo:'ENTRADA',
+    item: op.produto,
+    qtd,
+    custo: custoUnitario,
+    cc:'PRODUCAO',
+    obs:`Produção OP ${opId}`,
+    depositoId: endereco.depositoId,
+    enderecoId: endereco.id,
+    causa:'PRODUCAO'
+  });
+  const subprodutos = await obterSubprodutos(op.produto);
+  for(const sub of subprodutos){
+    const quantidade = qtd * Number(sub.qtdPorUnid||0);
+    if(quantidade<=0) continue;
+    await registrarMovimento({
+      tipo:'ENTRADA',
+      item: sub.item,
+      qtd: quantidade,
+      custo: 0,
+      cc:'PRODUCAO',
+      obs:`Subproduto OP ${opId}`,
+      depositoId: endereco.depositoId,
+      enderecoId: endereco.id,
+      causa:'SUBPRODUTO'
+    });
+  }
+  const atualizacoes = {
+    qtdProduzida: F.increment(qtd),
+    status: 'em_andamento'
+  };
+  if(qtdProduzida + qtd >= qtdPlanejada - 1e-6){
+    atualizacoes.status = 'concluida';
+    atualizacoes.fim = F.serverTimestamp();
+  }
+  await F.setDoc(opRef, atualizacoes, {merge:true});
+  await recalcularCustosOP(opId);
+  await listarItens();
+  await listarMovs();
+}
+
+async function obterBOM(produto){
+  const q = F.query(F.collection(db,'bom',produto,'componentes'));
+  const snap = await F.getDocs(q);
+  const lista = [];
+  snap.forEach(doc=>{
+    const data = doc.data();
+    if(data.__deleted) return;
+    lista.push({item: doc.id, qtd: Number(data.qtd||0), perdaPadraoPct: Number(data.perdaPadraoPct||0)});
+  });
+  return lista;
+}
+
+async function obterSubprodutos(produto){
+  const q = F.query(F.collection(db,'subprodutos',produto,'itens'));
+  const snap = await F.getDocs(q);
+  const lista = [];
+  snap.forEach(doc=>{
+    const data = doc.data();
+    if(data.__deleted) return;
+    lista.push({id: doc.id, item: data.item, qtdPorUnid: Number(data.qtdPorUnid||0)});
+  });
+  return lista;
+}
+
+function obterTurnoInfo(data){
+  const dt = new Date(data);
+  const hora = dt.getHours();
+  let turno = 'noite';
+  if(hora>=6 && hora<14) turno = 'manha';
+  else if(hora>=14 && hora<22) turno = 'tarde';
+  const inicio = new Date(dt);
+  if(turno==='manha') inicio.setHours(6,0,0,0);
+  else if(turno==='tarde') inicio.setHours(14,0,0,0);
+  else inicio.setHours(22,0,0,0);
+  const fim = new Date(inicio.getTime() + 8*60*60*1000);
+  return {turno, inicio, fim};
+}
+
+async function validarCapacidadeMaquina(maquina, inicio, fim, duracaoMin){
+  const turnos = CAPACIDADE_MAQUINAS[maquina];
+  if(!turnos) return;
+  const info = obterTurnoInfo(inicio);
+  const capacidade = turnos[info.turno];
+  if(!capacidade) return;
+  const q = F.query(
+    F.collectionGroup(db,'etapas'),
+    F.where('maquina','==',maquina),
+    F.where('inicio','>=',info.inicio),
+    F.where('inicio','<',info.fim)
+  );
+  const snap = await F.getDocs(q);
+  let total = 0;
+  snap.forEach(doc=>{
+    const etapa = doc.data();
+    const ini = etapa.inicio && etapa.inicio.toDate ? etapa.inicio.toDate() : (etapa.inicio? new Date(etapa.inicio):null);
+    const fm = etapa.fim && etapa.fim.toDate ? etapa.fim.toDate() : (etapa.fim? new Date(etapa.fim):null);
+    if(!ini || !fm) return;
+    total += Math.max((fm-ini)/60000, 0);
+  });
+  if(total + duracaoMin > capacidade + 1e-6){
+    const disponivel = Math.max(capacidade - total, 0);
+    throw new Error(`Capacidade excedida para ${maquina} (${info.turno}). Disponível ${disponivel.toFixed(1)} min.`);
+  }
+}
+
+async function recalcularCustosOP(opId){
+  const opRef = F.doc(db,'op',opId);
+  const opSnap = await F.getDoc(opRef);
+  if(!opSnap.exists()) return;
+  const op = opSnap.data();
+  const bom = await obterBOM(op.produto);
+  let custoPrevisto = 0;
+  let perdaPadraoTotal = 0;
+  for(const comp of bom){
+    const base = Number(comp.qtd||0) * Number(op.qtdPlanejada||0);
+    const perdaPadrao = base * (Number(comp.perdaPadraoPct||0)/100);
+    perdaPadraoTotal += perdaPadrao;
+    const totalComp = base + perdaPadrao;
+    const itSnap = await F.getDoc(F.doc(db,'itens',comp.item));
+    const custoMedio = itSnap.exists()? Number(itSnap.data().custoMedio||0) : 0;
+    custoPrevisto += totalComp * custoMedio;
+  }
+  const etapasSnap = await F.getDocs(F.collection(db,'op',opId,'etapas'));
+  let perdaRealTotal = 0;
+  etapasSnap.forEach(doc=>{
+    const etapa = doc.data();
+    perdaRealTotal += Number(etapa.perda||0);
+  });
+  const qtdPlanejada = Number(op.qtdPlanejada||0);
+  const qtdBoa = Math.max(qtdPlanejada - perdaRealTotal, 0.0001);
+  const custoReal = qtdBoa>0 ? custoPrevisto * (qtdPlanejada / qtdBoa) : custoPrevisto;
+  const custoUnitPrev = qtdPlanejada>0 ? custoPrevisto / qtdPlanejada : 0;
+  const custoUnitReal = custoReal / qtdBoa;
+  await F.setDoc(opRef, {
+    perdaPadraoTotal: Number(perdaPadraoTotal.toFixed(3)),
+    perdaRealTotal: Number(perdaRealTotal.toFixed(3)),
+    custoPrevisto: Number(custoPrevisto.toFixed(2)),
+    custoReal: Number(custoReal.toFixed(2)),
+    custoUnitarioPrevisto: Number(custoUnitPrev.toFixed(2)),
+    custoUnitarioReal: Number(custoUnitReal.toFixed(2)),
+    atualizadoEm: F.serverTimestamp()
+  }, {merge:true});
+}
 // ----------------- INVENTÁRIO -----------------
 $('frmInv').addEventListener('submit', async (e)=>{
   e.preventDefault();
