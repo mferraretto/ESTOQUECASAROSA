@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Casa Rosa | Estoque</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="container">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-badge">CR</div>
+      <div>
+        <div class="brand">Casa Rosa</div>
+        <div class="small">Gestão de Estoque</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="#" data-page="dashboard" class="active">📊 Dashboard</a>
+      <a href="#" data-page="itens">📦 Itens & Insumos</a>
+      <a href="#" data-page="mov">🔁 Movimentações</a>
+      <a href="#" data-page="producao">🛠️ Produção (BOM)</a>
+      <a href="#" data-page="inventario">📝 Inventário</a>
+      <a href="#" data-page="relatorios">📑 Relatórios</a>
+      <a href="#" data-page="config">⚙️ Configurações</a>
+    </nav>
+    <hr>
+    <button id="btnSair" class="btn btn-outline">Sair</button>
+  </aside>
+  <main>
+    <header class="header">
+      <div class="toolbar">
+        <span class="badge">Magenta</span>
+        <span class="badge" style="border-color:var(--tiffany)">Tiffany</span>
+        <span class="badge" style="border-color:var(--amarelo)">Amarelo</span>
+      </div>
+      <div id="userInfo" class="small">carregando...</div>
+    </header>
+
+    <section id="dashboard" class="content">
+      <div class="kpis">
+        <div class="card kpi"><div class="label">Itens cadastrados</div><div id="kpiItens" class="value">0</div></div>
+        <div class="card kpi"><div class="label">Saldo total</div><div id="kpiSaldo" class="value">0</div></div>
+        <div class="card kpi"><div class="label">Valor em estoque</div><div id="kpiValor" class="value">R$ 0,00</div></div>
+        <div class="card kpi"><div class="label">Movimentações (30d)</div><div id="kpiMov" class="value">0</div></div>
+      </div>
+      <div class="card">
+        <h3>Consumo médio (top 10)</h3>
+        <table id="tblConsumo"><thead><tr><th>Item</th><th>UM</th><th>Consumo 30d</th><th>Estoque</th><th>Proj. dias</th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+
+    <section id="itens" class="content hidden">
+      <div class="grid">
+        <div class="card">
+          <h3>Cadastrar item / insumo</h3>
+          <form id="frmItem">
+            <div class="grid">
+              <div>
+                <label>Código</label>
+                <input id="iCodigo" placeholder="SKU / Código interno" required>
+              </div>
+              <div>
+                <label>Descrição</label>
+                <input id="iDesc" placeholder="Ex: Chapa MDF 9mm 2,75x1,83" required>
+              </div>
+            </div>
+            <div class="grid">
+              <div>
+                <label>Unidade</label>
+                <select id="iUM">
+                  <option value="UN">UN</option>
+                  <option value="PC">PC</option>
+                  <option value="KG">KG</option>
+                  <option value="M2">M2</option>
+                </select>
+              </div>
+              <div>
+                <label>Custo médio (R$)</label>
+                <input id="iCusto" type="number" step="0.01" value="0">
+              </div>
+            </div>
+            <label>Estoque mínimo</label>
+            <input id="iMin" type="number" step="0.01" value="0">
+            <label>Observações</label>
+            <textarea id="iObs" rows="2"></textarea>
+            <br>
+            <button class="btn btn-primary" type="submit">Salvar item</button>
+            <span id="itemMsg" class="help"></span>
+          </form>
+        </div>
+        <div class="card">
+          <h3>Itens cadastrados</h3>
+          <div class="toolbar">
+            <input id="buscaItem" placeholder="Buscar por código/descrição">
+            <button id="btnReloadItens" class="btn btn-outline">Atualizar</button>
+          </div>
+          <table id="tblItens"><thead><tr><th>Código</th><th>Descrição</th><th>UM</th><th>Estoque</th><th>Min</th><th>Custo</th><th>Ações</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Estrutura (BOM) de produto</h3>
+        <form id="frmBOM" class="grid">
+          <div>
+            <label>Produto (código)</label>
+            <input id="bomProduto" required placeholder="EX: KIT-TRIO-CILINDRO">
+          </div>
+          <div>
+            <label>Item/insumo</label>
+            <input id="bomItem" required placeholder="EX: MDF-9MM-PLACA">
+          </div>
+          <div>
+            <label>Quantidade por produto</label>
+            <input id="bomQtd" type="number" step="0.0001" value="1">
+          </div>
+          <div>
+            <button class="btn btn-outline" type="submit" style="margin-top:22px">Adicionar à BOM</button>
+          </div>
+        </form>
+        <div id="bomMsg" class="help"></div>
+        <table id="tblBOM"><thead><tr><th>Produto</th><th>Item</th><th>Qtd</th><th>Remover</th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+
+    <section id="mov" class="content hidden">
+      <div class="grid">
+        <div class="card">
+          <h3>Registrar movimentação</h3>
+          <form id="frmMov">
+            <div class="grid">
+              <div>
+                <label>Tipo</label>
+                <select id="mTipo">
+                  <option value="ENTRADA">ENTRADA (compra/devolução)</option>
+                  <option value="SAIDA">SAÍDA (consumo/venda)</option>
+                  <option value="TRANSFER">TRANSFERÊNCIA</option>
+                </select>
+              </div>
+              <div>
+                <label>Código do item</label>
+                <input id="mItem" required placeholder="ex: MDF-9MM-PLACA">
+              </div>
+            </div>
+            <div class="grid">
+              <div>
+                <label>Quantidade</label>
+                <input id="mQtd" type="number" step="0.0001" required value="1">
+              </div>
+              <div>
+                <label>Custo unitário (R$)</label>
+                <input id="mCusto" type="number" step="0.01" value="0">
+              </div>
+            </div>
+            <div class="grid">
+              <div>
+                <label>Centro de custo</label>
+                <input id="mCC" placeholder="ex: PRODUCAO / LOJA">
+              </div>
+              <div>
+                <label>Obs</label>
+                <input id="mObs" placeholder="motivo/nota">
+              </div>
+            </div>
+            <br>
+            <button class="btn btn-primary" type="submit">Registrar</button>
+            <span id="movMsg" class="help"></span>
+          </form>
+        </div>
+        <div class="card">
+          <h3>Últimas movimentações</h3>
+          <table id="tblMov"><thead><tr><th>Data</th><th>Tipo</th><th>Item</th><th>Qtd</th><th>Custo</th><th>CC</th><th>Obs</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <section id="producao" class="content hidden">
+      <div class="grid">
+        <div class="card">
+          <h3>Ordem de Produção</h3>
+          <form id="frmOP">
+            <div class="grid">
+              <div>
+                <label>Produto (código)</label>
+                <input id="opProduto" required placeholder="KIT-TRIO-CILINDRO">
+              </div>
+              <div>
+                <label>Quantidade</label>
+                <input id="opQtd" type="number" step="0.0001" value="1">
+              </div>
+            </div>
+            <button class="btn btn-primary" type="submit">Produzir</button>
+            <span id="opMsg" class="help"></span>
+            <p class="help">Produção: baixa os itens da BOM e faz entrada do produto.</p>
+          </form>
+        </div>
+        <div class="card">
+          <h3>BOM do produto (visualização)</h3>
+          <div class="toolbar">
+            <input id="bomLookup" placeholder="Produto (código)">
+            <button id="btnLoadBOM" class="btn btn-outline">Carregar BOM</button>
+          </div>
+          <table id="tblBOMView"><thead><tr><th>Item</th><th>Qtd por unid.</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <section id="inventario" class="content hidden">
+      <div class="card">
+        <h3>Contagem de estoque</h3>
+        <form id="frmInv" class="grid">
+          <div>
+            <label>Código do item</label>
+            <input id="invItem" required>
+          </div>
+          <div>
+            <label>Quantidade contada</label>
+            <input id="invQtd" type="number" step="0.0001" required>
+          </div>
+          <div>
+            <button class="btn btn-outline" type="submit" style="margin-top:22px">Ajustar saldo</button>
+          </div>
+        </form>
+        <div id="invMsg" class="help"></div>
+        <p class="help">Gera movimentações de ajuste (+/-) até o saldo informado.</p>
+      </div>
+    </section>
+
+    <section id="relatorios" class="content hidden">
+      <div class="card">
+        <h3>Relatórios rápidos</h3>
+        <div class="grid">
+          <div>
+            <label>Item</label>
+            <input id="rItem" placeholder="código">
+          </div>
+          <div>
+            <label>Últimos N dias</label>
+            <input id="rDias" type="number" value="30">
+          </div>
+          <div>
+            <button id="btnRel" class="btn btn-outline" style="margin-top:22px">Gerar</button>
+          </div>
+        </div>
+        <table id="tblRel"><thead><tr><th>Data</th><th>Tipo</th><th>Qtd</th><th>Custo</th><th>Obs</th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+
+    <section id="config" class="content hidden">
+      <div class="card">
+        <h3>Estrutura de dados</h3>
+        <pre class="small highlight">
+coleções principais:
+- usuarios/{uid}
+- itens/{codigo}
+  - descricao, um, custoMedio, min, estoque (numérico)
+- movimentos/{autoId}
+  - tipo, item, qtd, custo, cc, obs, criadoEm, uid
+- bom/{produto}/componentes/{item}
+  - qtd
+        </pre>
+        <p class="help">Recomenda-se ativar regras de segurança (arquivo firestore.rules).</p>
+      </div>
+    </section>
+
+    <div class="footer small">© Casa Rosa • Plataforma de Estoque e Produção</div>
+  </main>
+</div>
+<script type="module" src="./firebase-config.js"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
