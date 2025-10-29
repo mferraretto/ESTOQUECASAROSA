@@ -8,7 +8,7 @@ import {
 import {
   getFirestore, doc, getDoc, setDoc, addDoc, collection,
   query, where, getDocs, updateDoc, serverTimestamp, orderBy, limit,
-  writeBatch, increment
+  writeBatch, increment, collectionGroup
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
   getStorage, ref as sref, uploadBytes, getDownloadURL
@@ -31,6 +31,6 @@ export const storage = getStorage(app);
 // Helpers para outros módulos
 export const F = {
   doc, getDoc, setDoc, addDoc, collection, query, where, getDocs, updateDoc,
-  serverTimestamp, orderBy, limit, writeBatch, increment
+  serverTimestamp, orderBy, limit, writeBatch, increment, collectionGroup
 };
 export const S = { sref, uploadBytes, getDownloadURL };
