@@ -462,9 +462,37 @@
     </section>
 
     <section id="config" class="content hidden">
-      <div class="card">
-        <h3>Estrutura de dados</h3>
-        <pre class="small highlight">
+      <div class="grid">
+        <div class="card">
+          <h3>Depósitos</h3>
+          <form id="frmDeposito" class="grid">
+            <div>
+              <label>Código</label>
+              <input id="depCodigo" placeholder="Ex: MATRIZ" required>
+            </div>
+            <div>
+              <label>Descrição / Nome</label>
+              <input id="depDescricao" placeholder="Ex: Depósito central">
+            </div>
+            <div>
+              <button class="btn btn-primary" type="submit" style="margin-top:22px">Salvar depósito</button>
+            </div>
+          </form>
+          <div id="depMsg" class="help"></div>
+          <table id="tblDepositos">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Descrição</th>
+                <th>Endereços vinculados</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h3>Estrutura de dados</h3>
+          <pre class="small highlight">
 coleções principais:
 - usuarios/{uid}
 - depositos/{id}
@@ -492,6 +520,7 @@ coleções principais:
   - nome, inicio, fim, operador, maquina, perda, observacao
         </pre>
         <p class="help">Recomenda-se ativar regras de segurança (arquivo firestore.rules).</p>
+
       </div>
     </section>
 

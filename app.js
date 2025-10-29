@@ -72,6 +72,32 @@ function preencherEnderecos(selectId, depositoId, {includeTodos=false, labelTodo
   }
 }
 
+function renderDepositos(){
+  const tbody = $('tblDepositos')?.querySelector('tbody');
+  if(!tbody) return;
+  tbody.innerHTML='';
+  if(state.depositos.length===0){
+    tbody.insertAdjacentHTML('beforeend', '<tr><td colspan="3">Nenhum depósito cadastrado.</td></tr>');
+    return;
+  }
+  const enderecosPorDeposito = state.enderecos.reduce((acc, end)=>{
+    const depId = end.depositoId;
+    if(depId) acc[depId] = (acc[depId]||0)+1;
+    return acc;
+  }, {});
+  const ordenados = [...state.depositos].sort((a,b)=>{
+    const aCod = (a.codigo||a.id||'').toString().toUpperCase();
+    const bCod = (b.codigo||b.id||'').toString().toUpperCase();
+    return aCod.localeCompare(bCod);
+  });
+  ordenados.forEach(dep=>{
+    const codigo = dep.codigo || dep.id;
+    const descricao = dep.descricao || dep.nome || '';
+    const totalEnd = enderecosPorDeposito[dep.id] || 0;
+    tbody.insertAdjacentHTML('beforeend', `<tr><td>${codigo}</td><td>${descricao||'—'}</td><td>${totalEnd}</td></tr>`);
+  });
+}
+
 function nomeDeposito(id){
   if(!id) return '';
   const dep = state.depositos.find(d=>d.id===id);
@@ -181,6 +207,41 @@ if($('convItem')){
     } else {
       $('convTabela').innerHTML = '<div class="help">Cadastre fatores em conversoesUM.</div>';
       $('convResultado').textContent = dados ? `Unidade base: ${dados.umBase||'—'}` : '';
+    }
+  });
+}
+
+if($('frmDeposito')){
+  $('frmDeposito').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const msg = $('depMsg');
+    if(msg) msg.textContent = '';
+    try{
+      const rawCodigo = $('depCodigo').value.trim();
+      if(!rawCodigo) throw new Error('Informe o código do depósito.');
+      const codigo = rawCodigo.toUpperCase().replace(/\s+/g,'-');
+      const descricao = $('depDescricao').value.trim();
+      const ref = F.doc(db,'depositos', codigo);
+      const snap = await F.getDoc(ref);
+      const payload = {
+        codigo,
+        atualizadoEm: F.serverTimestamp()
+      };
+      if(descricao){
+        payload.descricao = descricao;
+        payload.nome = descricao;
+      }
+      if(!snap.exists()){
+        payload.criadoEm = F.serverTimestamp();
+      }
+      await F.setDoc(ref, payload, {merge:true});
+      if(msg) msg.textContent = 'Depósito salvo com sucesso.';
+      e.target.reset();
+      await carregarLocais();
+      prepararCombos();
+    }catch(err){
+      console.error(err);
+      if(msg) msg.textContent = err?.message || 'Erro ao salvar depósito.';
     }
   });
 }
@@ -870,6 +931,7 @@ async function carregarLocais(){
   state.depositos = depsSnap.docs.map(d=>({id:d.id, ...d.data()}));
   state.enderecos = endSnap.docs.map(d=>({id:d.id, ...d.data()}));
   state.enderecosMap = new Map(state.enderecos.map(e=>[e.id, e]));
+  renderDepositos();
 }
 
 async function carregarConversoes(){
